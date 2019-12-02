@@ -145,11 +145,6 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
-# Data
-*.xlsx
-*.txt
-*.vocab
-*.h5
 
 # End of https://www.gitignore.io/api/windows,visualstudiocode,python
 
