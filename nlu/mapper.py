@@ -1,6 +1,7 @@
 from nlu.util import RawTextParser
 from nlu.text_encoder import CharTextEncoder
 from nlu.text_encoder import IntentEncoder
+from nlu.text_encoder import BioEncoder
 import os
 
 class Mapper:
@@ -13,6 +14,7 @@ class Mapper:
         self.rtper = RawTextParser()
         self.textEncoder = None
         self.intentEncoder = None
+        self.bioEncoder = None
         
     @classmethod
     def buildFromRawtable(cls, rawTable):
@@ -22,12 +24,23 @@ class Mapper:
     
     def _pureText(self, t):
         return self.rtper.pureText(t)
+    def _bioTagsChar(self, t):
+        return self.rtper.bioTagsChar(t)
     
     def _fitTo(self, rawTable):
         # CharTextEncoder: rawTable 내 모든 텍스트의 글자를 id번호로 배정해준다.
-        self.textEncoder = CharTextEncoder(self._pureText(t) for t in rawTable['text'])
+        self.textEncoder = CharTextEncoder(
+            self._pureText(t) for t in rawTable['text']
+            )
         # IntentEncoder: rawTable 내 모든 Intent를 id번호로 배정해준다.
-        self.intentEncoder = IntentEncoder(it for it in rawTable['intent'])
+        self.intentEncoder = IntentEncoder(
+            it for it in rawTable['intent']
+            )
+        # BioEncoder: rawTable 내 모든 BIO태그를 id번호로 배정해준다.
+        self.bioEncoder = BioEncoder(
+            self._bioTagsChar(t) for t in rawTable['text']
+            )
+        print (self.bioEncoder._vocabMap)
         
     def textVocabSize(self):
         return self.textEncoder.vocab_size
@@ -44,6 +57,9 @@ class Mapper:
         self.intentEncoder.save_to_file(
             os.path.join(mapperDir, 'intent')
         )
+        self.bioEncoder.save_to_file(
+            os.path.join(mapperDir, 'bio')
+        )
 
     @classmethod
     def loadFromFile(cls, mapperDir):
@@ -55,6 +71,7 @@ class Mapper:
         m.intentEncoder = IntentEncoder.load_from_file(
             os.path.join(mapperDir, 'intent')
         )
+        #TODO: slotname
         return m
     
     def mapTextIC(self, text):
@@ -74,4 +91,6 @@ class Mapper:
             return self.intentEncoder.decode(intentId)
         except IndexError:
             return self.intentEncoder._UNK
+
+    #TODO: bioEncoder
         

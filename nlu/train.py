@@ -118,7 +118,8 @@ class Trainer:
         self.vv( 'Test table size = {}'.format(len(testTable)) )
         
         # --------------------------------
-        
+        self.vv("SORRY, DEBUG")
+        '''
         # Training and validation...
         self.vv('Starting to train...')
         self.trainIntent(
@@ -126,6 +127,7 @@ class Trainer:
             paddedLen, wordEmbOutputDim, lstmUnits,
             epochs, batchSize,
             self.icModelFile() )
+        '''
         
         
 
@@ -174,3 +176,4 @@ class Trainer:
         self.vv('Saving the intent classifier model: ')
         self.vv(fnICModel)
         model.save(fnICModel)
+

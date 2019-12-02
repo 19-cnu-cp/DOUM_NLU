@@ -125,3 +125,73 @@ class IntentEncoder(tfds.features.text.TextEncoder):
             raise TypeError('Wrong encoder class.')
         # vocabMap을 갖춘 인코더를 만든다.
         return cls(None, vocabMap=mySetupLoaded['vocabMap'])
+
+
+class BioEncoder(tfds.features.text.TextEncoder):
+
+    def __init__(self, bioGenerator, vocabMap=None):
+        # VocabMap에 없을 문자, Unknown Character
+        self._UNK = "UNK"
+        # 주어진 vocabMap이 없으면: 새로이 BIO Tag에 번호 매기기.
+        if not vocabMap:
+            self._vocabMap = self.buildVocab(bioGenerator)
+        # 있으면: 그것으로 한다.
+        else:
+            self._vocabMap = vocabMap
+    
+    def buildVocab(self, bioGenerator):
+        # 모든 BIO Tag를 취합하여 번호를 매기자.
+        vocabSet = set()
+        for tagArray in bioGenerator:
+            vocabSet.update(tagArray)
+        vocabMap = dict( zip(vocabSet, range(2, len(vocabSet)+2)) )
+        vocabMap[self._UNK] = 1
+        return vocabMap
+        # 1번: UNK
+    
+    def encode(self, ss):
+        '''BIO Tag 배열 ss를 id 배열로...'''
+        vm = self._vocabMap
+        ids = []
+        for tag in ss:
+            if not tag in vm:
+                tag = self._UNK
+            ids.append(vm[tag])
+        return ids
+
+    def decode(self, ids):
+        '''ids였던 것이 BIO Tag 문자열의 배열로 회귀'''
+        vm = self._vocabMap
+        ss = []
+        for i in ids:
+            find = [k for k, i in vm.items() if i == id]
+            if len(find) == 0 : # 없는 id
+                raise IndexError('Unavailable Intent ID.')
+            tag = find[0]
+            ss.append(tag)
+        return ss
+            
+    @property
+    def vocab_size(self):
+        return len(self._vocabMap)-1
+    
+    def save_to_file(self, filename_prefix):
+        fname = filename_prefix + VOCAB_POSTFIX
+        mySetupSaved = {
+            'encoderClass': self.__class__.__name__,
+            'vocabMap': self._vocabMap
+        }
+        with open(fname, 'w') as f:
+            json.dump(mySetupSaved, f)
+
+    @classmethod
+    def load_from_file(cls, filename_prefix):
+        # 일단 파일을 읽고
+        fname = filename_prefix + VOCAB_POSTFIX
+        with open(fname, 'r') as f:
+            mySetupLoaded = json.load(f)
+        # 우리의 것이 맞나 확인한 뒤
+        if mySetupLoaded['encoderClass'] != cls.__name__:
+            raise TypeError('Wrong encoder class.')
+        # vocabMap을 갖춘 인코더를 만든다.
+        return cls(None, vocabMap=mySetupLoaded['vocabMap'])
