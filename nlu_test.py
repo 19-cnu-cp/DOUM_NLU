@@ -7,10 +7,10 @@ def startInteraction(pr):
         print()
         text = input("Your query text? > ")
         if len(text.strip()) <= 0: continue
-        intent = pr.predictIntent(text)
-        biotags = pr.predictEntity(text)
-        print("Intent =", intent)
-        print("Bio tags:")
+        intent, intentProb = pr.predictIntent(text)
+        biotags, biotagsProb = pr.predictEntity(text)
+        print("Intent = {} (Prob. {})".format(intent, intentProb))
+        print("Bio tags: (Prob. {})".format(biotagsProb))
         print(biotags)
 
 if __name__ == '__main__':

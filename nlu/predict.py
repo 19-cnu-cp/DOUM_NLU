@@ -12,6 +12,7 @@ import numpy as np
 # 당분간 Import error는 무시 가능
 # https://github.com/microsoft/vscode-python/issues/7390
 from tensorflow.keras.models import load_model as keras_load_model
+import tensorflow as tf
 
 MODEL_ROOT = os.path.abspath( os.path.join(
     os.path.dirname(__file__), '..', 'model'
@@ -43,6 +44,9 @@ class Predictor:
         if self._verbose:
             print("[PREDICTOR]", str)
 
+    def domain(self):
+        return self._domain
+
     def mapperDir(self):
         '''매퍼 설정값(*.vocab)이 있어야 할 주소'''
         return os.path.join(MODEL_ROOT, self._domain, 'mapper')
@@ -57,32 +61,37 @@ class Predictor:
 
     
     def predictIntent(self, text):
-        '''텍스트text의 의도Intent'''
+        '''텍스트text의 의도Intent와 그 확률'''
         mapTextIC = self._mapper.mapTextIC
         getIntentFromId = self._mapper.getIntentFromId
         model = self._icModel
 
-        X_user = np.array([ mapTextIC(text) ])
+        X_user = tf.constant(np.array([ mapTextIC(text) ]))
         pred_user = model.predict(X_user)
         # pred_user = [[8.6426735e-07 1.1622906e-06 ... 3.8642287e-03]]
 
         intentId = np.where(pred_user[0] == np.amax(pred_user[0]))[0][0]
         # np.where(...) = [[13]]  #(13 = pred_user중 최고값의 index)
-        return getIntentFromId(intentId)
+        prob = pred_user[0][ intentId ]
+        return getIntentFromId(intentId), float(prob)
         
 
     def predictEntity(self, text):
         '''
-        텍스트text의 객체Entity. 예) ['O', 'O', 'B-loc', 'I-loc', 'O', 'O', 'O']
+        텍스트text의 객체Entity를 가리키는 BIO 태그배열과 그 확률.
+        예) ['O', 'O', 'B-loc', 'I-loc', 'O', 'O', 'O']
         '''
         mapTextER = self._mapper.mapTextER
         getBioFromIds = self._mapper.getBioTagsFromIds
         model = self._erModel
         
-        X_user = np.array([ mapTextER(text) ])
+        X_user = tf.constant(np.array([ mapTextER(text) ]))
         pred_user = model.predict(X_user)
-        # pred_user = [[8.6426735e-07 1.1622906e-06 ... 3.8642287e-03], [...], ...]
+        # pred_user = [[[8.6426735e-07 1.1622906e-06 ... 3.8642287e-03], [...], ...]]
         
         bioIds = np.argmax(pred_user, -1)[0]
         # np.argmax(...) = [[1, 1, 4, 3, ??..]]
-        return getBioFromIds(bioIds)
+        prob = min(
+            [ pred_user[0][i][ bioIds[i] ] for i in range(len(bioIds)) ]
+        ) # The minimal probability among the predicted BIO tags.
+        return getBioFromIds(bioIds), float(prob)
