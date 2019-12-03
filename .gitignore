@@ -145,6 +145,11 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
+# Data input/output of the NLU training
+*.txt
+*.xlsx
+*.vocab
+*.h5
 
 # End of https://www.gitignore.io/api/windows,visualstudiocode,python
 

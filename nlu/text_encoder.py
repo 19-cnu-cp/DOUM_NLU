@@ -3,6 +3,9 @@ import json
 
 VOCAB_POSTFIX = ".vocab"
 
+# 훗날 인코딩된 값이 RNN 등지에서 쓰일 때 Zero-padding을 받을 수 있으므로
+# 모든 인코더에서 VocabMap의 0번에 해당하는 것은 항상 Padding을 뜻해야 한다.
+
 class CharTextEncoder(tfds.features.text.TextEncoder):
 
     def __init__(self, textGenerator, vocabMap=None):
@@ -163,7 +166,7 @@ class BioEncoder(tfds.features.text.TextEncoder):
         '''ids였던 것이 BIO Tag 문자열의 배열로 회귀'''
         vm = self._vocabMap
         ss = []
-        for i in ids:
+        for id in ids:
             find = [k for k, i in vm.items() if i == id]
             if len(find) == 0 : # 없는 id
                 raise IndexError('Unavailable Intent ID.')

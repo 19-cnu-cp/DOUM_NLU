@@ -8,6 +8,7 @@ Training Natural Language Understanding (NLU)
 
 import pandas as pd
 from nlu.mapper import Mapper
+from nlu.util import RawTextParser #ER에서 bioTags를 뽑아내기 위함
 import os
 import numpy as np
 from nlu.read_excel import convertXlsxToText
@@ -15,7 +16,9 @@ from nlu.read_excel import convertXlsxToText
 # https://github.com/microsoft/vscode-python/issues/7390
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.layers import Embedding, Dense, LSTM
+from tensorflow.keras.layers import Bidirectional, TimeDistributed
 from tensorflow.keras.models import Sequential
+from tensorflow.keras.utils import to_categorical
 
 DATA_ROOT = os.path.abspath( os.path.join(
     os.path.dirname(__file__), '..', 'data'
@@ -50,6 +53,10 @@ class Trainer:
         '''의도분석(Intent Classifier)모델의 HDF5파일 주소'''
         return os.path.join(MODEL_ROOT, self._domain, 'intent_classifier.h5')
 
+    def erModelFile(self):
+        '''개체명인식(Entity Recognizer)모델의 HDF5파일 주소'''
+        return os.path.join(MODEL_ROOT, self._domain, 'entity_recognizer.h5')
+
     def readyModelDir(self):
         '''모델 디렉토리가 없으면 만듦.'''
         MODEL_DOMAIN_DIR = os.path.join(MODEL_ROOT, self._domain)
@@ -66,7 +73,7 @@ class Trainer:
 
     def train(self,
         testRatio=0.2, paddedLen=40, wordEmbOutputDim=64,
-        lstmUnits=128, epochs=10, batchSize=60 ):
+        lstmUnits=128, epochsIC=10, epochsER=5, batchSize=60 ):
         '''
         주어진 데이터로 NLU서버가 Predication을 할 수 있는 상태를 만든다.
         즉, 매퍼(Mapper)와 모델(Model)이 준비되게 한다.
@@ -76,7 +83,8 @@ class Trainer:
             paddedLen: Training 시 Padding 상태 최대 길이
             wordEmbOutputDim: Word Embedding의 벡터 출력 길이
             lstmUnits: LSTM 레이어의 유닛 수
-            epochs: Training 수행 에포크 수
+            epochsIC: Training Intent Classifier 수행 에포크 수
+            epochsER: Training Entity Recognizer 수행 에포크 수
             batchSize: Training Batch Size
         '''
         # ---------전처리 과정------------
@@ -87,7 +95,7 @@ class Trainer:
             convertXlsxToText( self.rawExcelFile(), self.rawFile() )
         except FileNotFoundError:
             self.vv(
-                'ERROR - Could not find \'raw.xlsx\' in the directory \'data/{}\'. Please be sure to have it.'
+                'ERROR - Could not find the excel file for \'{}\'. Did you forget?'
                 .format(self._domain) )
             raise
         
@@ -118,30 +126,34 @@ class Trainer:
         self.vv( 'Test table size = {}'.format(len(testTable)) )
         
         # --------------------------------
-        self.vv("SORRY, DEBUG")
-        '''
+        
         # Training and validation...
-        self.vv('Starting to train...')
-        self.trainIntent(
+        self.vv('Starting to train Intent Classifier...')
+        self.trainIntentClassifier(
             trainTable, testTable, mapper,
             paddedLen, wordEmbOutputDim, lstmUnits,
-            epochs, batchSize,
+            epochsIC, batchSize,
             self.icModelFile() )
-        '''
-        
+        self.vv('Starting to train Entity Recognizer...')
+        self.trainEntityRecognizer(
+            trainTable, testTable, mapper,
+            paddedLen, wordEmbOutputDim, lstmUnits,
+            epochsER, batchSize,
+            self.erModelFile() )
+            
         
 
-    def trainIntent(self,
+    def trainIntentClassifier(self,
         trainTable, testTable, mapper,
         paddedLen, wordEmbOutputDim, lstmUnits,
-        epochs, batchSize,
+        epochsIC, batchSize,
         fnICModel ):
         # X_train, ...
         X_train = [ mapper.mapTextIC(t ) for t  in trainTable['text'  ] ]
         y_train = [ mapper.mapIntent(it) for it in trainTable['intent'] ]
         X_test  = [ mapper.mapTextIC(t ) for t  in testTable ['text'  ] ]
         y_test  = [ mapper.mapIntent(it) for it in testTable ['intent'] ]
-        # Keras Model fitting에 들어갈 수 있게 조정.
+        # Keras에서 받아들일 수 있는 데이터 형식으로 조정.
         X_train = pad_sequences(X_train, maxlen=paddedLen)
         y_train = np.array(y_train)
         X_test  = pad_sequences(X_test , maxlen=paddedLen)
@@ -153,7 +165,7 @@ class Trainer:
         model = Sequential()
         model.add(Embedding(wordEmbInputDim, wordEmbOutputDim))
         model.add(LSTM(lstmUnits, activation='sigmoid'))
-        model.add(Dense(outputUnits, activation='sigmoid'))
+        model.add(Dense(outputUnits, activation='softmax'))
 
         myVerbose = 0
         if self._verbose: myVerbose = 1
@@ -164,7 +176,7 @@ class Trainer:
             metrics=['accuracy'] )
         model.fit(
             X_train, y_train,
-            epochs=epochs,
+            epochs=epochsIC,
             batch_size=batchSize,
             verbose=myVerbose )
 
@@ -177,3 +189,53 @@ class Trainer:
         self.vv(fnICModel)
         model.save(fnICModel)
 
+
+    def trainEntityRecognizer(self,
+        trainTable, testTable, mapper,
+        paddedLen, wordEmbOutputDim, lstmUnits,
+        epochsER, batchSize,
+        fneERModel ):
+        rtper = RawTextParser()
+        numClassesBio = mapper.maxBiotagsID() + 1  #[0..maxID] -> maxID+1개
+
+        # X_train, ...
+        X_train = [ mapper.mapTextER(t) for t in trainTable['text'] ]
+        y_train = [ mapper.mapBioTags(rtper.bioTagsChar(t)) for t in trainTable['text'] ]
+        X_test = [ mapper.mapTextER(t) for t in testTable['text'] ]
+        y_test = [ mapper.mapBioTags(rtper.bioTagsChar(t)) for t in testTable['text'] ]
+        # Keras에서 받아들일 수 있는 데이터 형식으로 조정.
+        X_train = pad_sequences(X_train, maxlen=paddedLen)
+        y_train = pad_sequences(y_train, maxlen=paddedLen)
+        X_test  = pad_sequences(X_test , maxlen=paddedLen)
+        y_test  = pad_sequences(y_test , maxlen=paddedLen)
+        
+        wordEmbInputDim = mapper.textVocabSize() + 2
+        outputUnits = numClassesBio
+        # Keras Layer를 쌓는다.
+        model = Sequential()
+        model.add(Embedding(wordEmbInputDim, wordEmbOutputDim))
+        model.add(Bidirectional(LSTM(lstmUnits, return_sequences=True, activation='sigmoid')))
+        model.add(TimeDistributed(Dense(outputUnits, activation='softmax')))
+
+        myVerbose = 0
+        if self._verbose: myVerbose = 1
+        # 시작.
+        model.compile(
+            optimizer='adam',
+            loss='sparse_categorical_crossentropy',
+            metrics=['accuracy'] )
+        model.fit(
+            X_train, y_train,
+            epochs=epochsER,
+            batch_size=batchSize,
+            verbose=myVerbose )
+
+        # Validation
+        self.vv('Validation time...')
+        self.vv( 'Accuracy: %.4f' % (model.evaluate(X_test, y_test, verbose=0)[1]) )
+
+        # Saving
+        self.vv('Saving the entity recognizer model: ')
+        self.vv(fneERModel)
+        model.save(fneERModel)
+        

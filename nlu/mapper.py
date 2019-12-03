@@ -40,7 +40,6 @@ class Mapper:
         self.bioEncoder = BioEncoder(
             self._bioTagsChar(t) for t in rawTable['text']
             )
-        print (self.bioEncoder._vocabMap)
         
     def textVocabSize(self):
         return self.textEncoder.vocab_size
@@ -71,11 +70,14 @@ class Mapper:
         m.intentEncoder = IntentEncoder.load_from_file(
             os.path.join(mapperDir, 'intent')
         )
-        #TODO: slotname
+        m.bioEncoder = BioEncoder.load_from_file(
+            os.path.join(mapperDir, 'bio')
+        )
         return m
     
     def mapTextIC(self, text):
         '''Intent Classification에 쓰일 텍스트를 매핑'''
+        #향후 과제: mapTextER과 알고리즘을 달리할 수 있음.
         ptext = self._pureText(text)
         textIds = self.textEncoder.encode(ptext)
         return textIds
@@ -92,5 +94,26 @@ class Mapper:
         except IndexError:
             return self.intentEncoder._UNK
 
-    #TODO: bioEncoder
+    def mapTextER(self, text):
+        '''Entity Recognition에 쓰일 텍스트를 매핑'''
+        ptext = self._pureText(text)
+        textIds = self.textEncoder.encode(ptext)
+        return textIds
+
+    def mapBioTags(self, bioTags):
+        '''BIO Tag 배열을 매핑'''
+        tagIds = self.bioEncoder.encode(bioTags)
+        return tagIds
+
+    def getBioTagsFromIds(self, ᅟtagIds):
+        '''ID배열 tagIds의 각각을 모두 원래 이름으로...'''
+        try:
+            return self.bioEncoder.decode(ᅟtagIds)
+        except IndexError:
+            #return [self.bioEncoder._UNK for _ in ᅟtagIds]
+            return [self.bioEncoder._UNK]
+            
+    def maxBiotagsID(self):
+        return self.bioEncoder.vocab_size+1
+        #예: UNK인 1번부터 I-??인 14번까지 있으면 return 14.
         
