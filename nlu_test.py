@@ -8,7 +8,10 @@ def startInteraction(pr):
         text = input("Your query text? > ")
         if len(text.strip()) <= 0: continue
         intent = pr.predictIntent(text)
+        biotags = pr.predictEntity(text)
         print("Intent =", intent)
+        print("Bio tags:")
+        print(biotags)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
